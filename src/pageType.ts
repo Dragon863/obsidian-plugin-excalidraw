@@ -17,82 +17,93 @@ const excalidrawMatcher: PageMatcher = ({ fileData }) => {
   return "excalidrawData" in fileData;
 };
 
-export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts) => ({
-  name: "ExcalidrawPage",
-  priority: 25,
-  fileExtensions: [".excalidraw.md", ".excalidraw"],
-  match: excalidrawMatcher,
+export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts) => {
+  const detectedExcalidrawFiles = new Set<string>();
 
-  generate({ ctx }) {
-    const excalidrawFiles = ctx.allFiles.filter(
-      (fp: string) => fp.endsWith(".excalidraw.md") || fp.endsWith(".excalidraw"),
-    );
+  return {
+    name: "ExcalidrawPage",
+    priority: 25,
+    fileExtensions: [".md", ".excalidraw"],
+    match: excalidrawMatcher,
 
-    const imageFiles = ctx.allFiles.filter((fp: string) =>
-      /\.(png|jpe?g|gif|svg|webp|avif|bmp|ico)$/i.test(fp),
-    );
+    generate({ ctx }) {
+      detectedExcalidrawFiles.clear();
+      const excalidrawFiles = ctx.allFiles.filter((fp: string) => /\.(md|excalidraw)$/i.test(fp));
 
-    const virtualPages: VirtualPage[] = [];
+      const imageFiles = ctx.allFiles.filter((fp: string) =>
+        /\.(png|jpe?g|gif|svg|webp|avif|bmp|ico)$/i.test(fp),
+      );
 
-    for (const filePath of excalidrawFiles) {
-      const fullPath = join(ctx.argv.directory, filePath);
-      let content: string;
-      try {
-        content = readFileSync(fullPath, "utf-8");
-      } catch {
-        continue;
-      }
+      const virtualPages: VirtualPage[] = [];
 
-      const data = parseExcalidraw(content, filePath);
-      if (!data) continue;
+      for (const filePath of excalidrawFiles) {
+        const fullPath = join(ctx.argv.directory, filePath);
+        let content: string;
+        try {
+          content = readFileSync(fullPath, "utf-8");
+        } catch {
+          continue;
+        }
 
-      const resolvedImagePaths: Record<string, string> = {};
-      if (data.embeddedFiles) {
-        for (const [hash, wikilink] of Object.entries(data.embeddedFiles)) {
-          if (data.files[hash]?.dataURL) continue;
-          const targetName = wikilink.split("/").pop()?.toLowerCase() ?? "";
-          const match = imageFiles.find((fp: string) => {
-            const fpName = fp.split("/").pop()?.toLowerCase() ?? "";
-            return fpName === targetName;
-          });
-          if (match) {
-            resolvedImagePaths[hash] = match;
+        const data = parseExcalidraw(content, filePath);
+        if (!data) continue;
+        detectedExcalidrawFiles.add(filePath);
+
+        const resolvedImagePaths: Record<string, string> = {};
+        if (data.embeddedFiles) {
+          for (const [hash, wikilink] of Object.entries(data.embeddedFiles)) {
+            if (data.files[hash]?.dataURL) continue;
+            const targetName = wikilink.split("/").pop()?.toLowerCase() ?? "";
+            const match = imageFiles.find((fp: string) => {
+              const fpName = fp.split("/").pop()?.toLowerCase() ?? "";
+              return fpName === targetName;
+            });
+            if (match) {
+              resolvedImagePaths[hash] = match;
+            }
           }
         }
+
+        const baseName =
+          filePath
+            .replace(/\.excalidraw\.md$/i, "")
+            .replace(/\.excalidraw$/i, "")
+            .replace(/\.md$/i, "")
+            .split("/")
+            .pop() ?? "Excalidraw Drawing";
+        const slug = slugifyFilePath(filePath as Parameters<typeof slugifyFilePath>[0]) as FullSlug;
+
+        virtualPages.push({
+          slug,
+          title: baseName,
+          data: {
+            frontmatter: { title: baseName, tags: ["excalidraw"] },
+            excalidrawData: data,
+            excalidrawOptions: opts,
+            excalidrawImagePaths: resolvedImagePaths,
+          },
+        });
       }
 
-      const baseName =
-        filePath
-          .replace(/\.excalidraw\.md$/, "")
-          .replace(/\.excalidraw$/, "")
-          .split("/")
-          .pop() ?? "Excalidraw Drawing";
-      const slug = slugifyFilePath(filePath as Parameters<typeof slugifyFilePath>[0]) as FullSlug;
+      return virtualPages;
+    },
 
-      virtualPages.push({
-        slug,
-        title: baseName,
-        data: {
-          frontmatter: { title: baseName, tags: ["excalidraw"] },
-          excalidrawData: data,
-          excalidrawOptions: opts,
-          excalidrawImagePaths: resolvedImagePaths,
-        },
-      });
-    }
+    shouldPublish(_ctx: BuildCtx, content: ProcessedContent) {
+      const fileData = content[1].data;
+      const relativePath = fileData.relativePath ?? "";
+      const frontmatter = fileData.frontmatter as Record<string, unknown> | undefined;
+      if (
+        detectedExcalidrawFiles.has(relativePath) ||
+        frontmatter?.["excalidraw-plugin"] === "parsed" ||
+        /\.(excalidraw\.md|excalidraw)$/i.test(relativePath)
+      ) {
+        return false;
+      }
+      return true;
+    },
 
-    return virtualPages;
-  },
-
-  shouldPublish(_ctx: BuildCtx, content: ProcessedContent) {
-    const relativePath = content[1].data.relativePath ?? "";
-    if (relativePath.endsWith(".excalidraw.md") || relativePath.endsWith(".excalidraw")) {
-      return false;
-    }
-    return true;
-  },
-
-  layout: "excalidraw",
-  frame: "excalidraw",
-  body: ExcalidrawBody,
-});
+    layout: "excalidraw",
+    frame: "excalidraw",
+    body: ExcalidrawBody,
+  };
+};

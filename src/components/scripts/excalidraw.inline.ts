@@ -90,11 +90,21 @@ function initPanZoom(page) {
     positionOverlays();
   }
 
+  function zoomAt(nextZoom, x, y) {
+    var boundedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom));
+    if (boundedZoom === zoom) return;
+    var ratio = boundedZoom / zoom;
+    panX = x - (x - panX) * ratio;
+    panY = y - (y - panY) * ratio;
+    zoom = boundedZoom;
+    applyTransform();
+  }
+
   function handleWheel(e) {
     e.preventDefault();
     var delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-    zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + delta));
-    applyTransform();
+    var rect = container.getBoundingClientRect();
+    zoomAt(zoom + delta, rect.width / 2, rect.height / 2);
   }
 
   function handleMouseDown(e) {
@@ -123,15 +133,13 @@ function initPanZoom(page) {
 
   if (zoomInBtn) {
     zoomInBtn.addEventListener("click", function () {
-      zoom = Math.min(MAX_ZOOM, zoom + ZOOM_STEP);
-      applyTransform();
+      zoomAt(zoom + ZOOM_STEP, container.clientWidth / 2, container.clientHeight / 2);
     });
   }
 
   if (zoomOutBtn) {
     zoomOutBtn.addEventListener("click", function () {
-      zoom = Math.max(MIN_ZOOM, zoom - ZOOM_STEP);
-      applyTransform();
+      zoomAt(zoom - ZOOM_STEP, container.clientWidth / 2, container.clientHeight / 2);
     });
   }
 
@@ -170,9 +178,11 @@ function initPanZoom(page) {
       var dy = e.touches[0].clientY - e.touches[1].clientY;
       var dist = Math.sqrt(dx * dx + dy * dy);
       var scale = dist / lastTouchDist;
-      zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * scale));
       lastTouchDist = dist;
-      applyTransform();
+      var rect = container.getBoundingClientRect();
+      var centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+      var centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+      zoomAt(zoom * scale, centerX, centerY);
     }
   }
 
