@@ -25,6 +25,14 @@ export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts
     priority: 25,
     fileExtensions: [".md", ".excalidraw"],
     match: excalidrawMatcher,
+    export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts) => {
+  const detectedExcalidrawFiles = new Set<string>();
+
+  return {
+    name: "ExcalidrawPage",
+    priority: 25,
+    fileExtensions: [".md", ".excalidraw"],
+    match: excalidrawMatcher,
 
     generate({ ctx }) {
       detectedExcalidrawFiles.clear();
@@ -104,6 +112,11 @@ export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts
 
     layout: "excalidraw",
     frame: "excalidraw",
+    body: ExcalidrawBody,
+  };
+};
+layout: "excalidraw",
+  frame: "excalidraw",
     body: ExcalidrawBody,
   };
 };
