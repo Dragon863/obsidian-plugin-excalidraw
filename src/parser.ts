@@ -7,14 +7,18 @@ const DEFAULT_APP_STATE = {
   exportWithDarkMode: false,
 };
 
-export function parseExcalidraw(content: string, filePath: string): ExcalidrawData | null {
-  if (filePath.endsWith(".excalidraw.md")) {
-    return parseExcalidrawMd(content);
+export function parseExcalidraw(content: string, _filePath: string): ExcalidrawData | null {
+  // Obsidian identifies drawing notes by their contents;
+  // inspect the payload instead of relying on the filename.
+  // it was really annoying me to manually add .excalidraw
+  // to the end of every canvas' filename just so it would
+  // show up in quartz!
+  const trimmed = content.trimStart();
+  if (trimmed.startsWith("{")) {
+    const jsonDrawing = parseExcalidrawJson(content);
+    if (jsonDrawing) return jsonDrawing;
   }
-  if (filePath.endsWith(".excalidraw")) {
-    return parseExcalidrawJson(content);
-  }
-  return null;
+  return parseExcalidrawMd(content);
 }
 
 export function parseExcalidrawJson(content: string): ExcalidrawData | null {

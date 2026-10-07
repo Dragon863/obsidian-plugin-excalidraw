@@ -17,16 +17,17 @@ const excalidrawMatcher: PageMatcher = ({ fileData }) => {
   return "excalidrawData" in fileData;
 };
 
-export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts) => ({
-  name: "ExcalidrawPage",
-  priority: 25,
-  fileExtensions: [".excalidraw.md", ".excalidraw"],
-  match: excalidrawMatcher,
+export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts) => {
+  const detectedExcalidrawFiles = new Set<string>();
 
-  generate({ ctx }) {
-    const excalidrawFiles = ctx.allFiles.filter(
-      (fp: string) => fp.endsWith(".excalidraw.md") || fp.endsWith(".excalidraw"),
-    );
+  return {
+    name: "ExcalidrawPage",
+    priority: 25,
+    fileExtensions: [".md", ".excalidraw"],
+    match: excalidrawMatcher,
+
+    generate({ ctx }) {
+    const excalidrawFiles = ctx.allFiles.filter((fp: string) => /\.(md|excalidraw)$/i.test(fp));
 
     const imageFiles = ctx.allFiles.filter((fp: string) =>
       /\.(png|jpe?g|gif|svg|webp|avif|bmp|ico)$/i.test(fp),
@@ -45,6 +46,7 @@ export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts
 
       const data = parseExcalidraw(content, filePath);
       if (!data) continue;
+      detectedExcalidrawFiles.add(filePath);
 
       const resolvedImagePaths: Record<string, string> = {};
       if (data.embeddedFiles) {
@@ -65,6 +67,7 @@ export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts
         filePath
           .replace(/\.excalidraw\.md$/, "")
           .replace(/\.excalidraw$/, "")
+          .replace(/\.md$/, "")
           .split("/")
           .pop() ?? "Excalidraw Drawing";
       const slug = slugifyFilePath(filePath as Parameters<typeof slugifyFilePath>[0]) as FullSlug;
@@ -82,17 +85,19 @@ export const ExcalidrawPage: QuartzPageTypePlugin<ExcalidrawPageOptions> = (opts
     }
 
     return virtualPages;
-  },
+    },
 
-  shouldPublish(_ctx: BuildCtx, content: ProcessedContent) {
+    shouldPublish(_ctx: BuildCtx, content: ProcessedContent) {
     const relativePath = content[1].data.relativePath ?? "";
-    if (relativePath.endsWith(".excalidraw.md") || relativePath.endsWith(".excalidraw")) {
+    if (detectedExcalidrawFiles.has(relativePath)) return false;
+    if (/\.(excalidraw\.md|excalidraw)$/i.test(relativePath)) {
       return false;
     }
     return true;
-  },
+    },
 
-  layout: "excalidraw",
-  frame: "excalidraw",
-  body: ExcalidrawBody,
-});
+    layout: "excalidraw",
+    frame: "excalidraw",
+    body: ExcalidrawBody,
+  };
+};
