@@ -47,45 +47,66 @@ export interface RenderContext {
   resolvedImages?: Record<string, string>;
 }
 
-export function renderToSvg(
+export type RenderMetadata = Pick<RenderResult, "overlays" | "viewBox">;
+
+export function getRenderMetadata(
   data: ExcalidrawData,
   opts: ExcalidrawPageOptions = {},
   ctx?: RenderContext,
-): RenderResult {
+): RenderMetadata {
   const elements = data.elements.filter((el) => !el.isDeleted);
   if (elements.length === 0) {
-    return {
-      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>',
-      overlays: [],
-      viewBox: { width: 100, height: 100, offsetX: 0, offsetY: 0 },
-    };
+    return { overlays: [], viewBox: { width: 100, height: 100, offsetX: 0, offsetY: 0 } };
   }
 
   const padding = opts.exportPadding ?? 20;
   const bbox = computeBoundingBox(elements);
   const width = Math.ceil(bbox.width + padding * 2);
   const height = Math.ceil(bbox.height + padding * 2);
-  const offsetX = -bbox.minX + padding;
-  const offsetY = -bbox.minY + padding;
+  const overlays = elements
+    .filter((el) => el.type === "embeddable" || el.type === "iframe")
+    .map((el) => {
+      const link = (el.link as string) ?? "";
+      return {
+        id: el.id,
+        x: el.x,
+        y: el.y,
+        width: el.width,
+        height: el.height,
+        link,
+        isWikilink: link.startsWith("[["),
+        resolved: ctx?.resolvedEmbeds?.[el.id],
+      };
+    });
+
+  return {
+    overlays,
+    viewBox: {
+      width,
+      height,
+      offsetX: -bbox.minX + padding,
+      offsetY: -bbox.minY + padding,
+    },
+  };
+}
+
+export function renderToSvg(
+  data: ExcalidrawData,
+  opts: ExcalidrawPageOptions = {},
+  ctx?: RenderContext,
+): RenderResult {
+  const elements = data.elements.filter((el) => !el.isDeleted);
+  const metadata = getRenderMetadata(data, opts, ctx);
+  if (elements.length === 0) {
+    return {
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>',
+      ...metadata,
+    };
+  }
+
+  const { width, height, offsetX, offsetY } = metadata.viewBox;
 
   const bgColor = resolveBgColor(data, opts);
-
-  const overlays: EmbedOverlay[] = [];
-  const embeddables = elements.filter((el) => el.type === "embeddable" || el.type === "iframe");
-  for (const el of embeddables) {
-    const link = (el.link as string) ?? "";
-    const isWikilink = link.startsWith("[[");
-    overlays.push({
-      id: el.id,
-      x: el.x,
-      y: el.y,
-      width: el.width,
-      height: el.height,
-      link,
-      isWikilink,
-      resolved: ctx?.resolvedEmbeds?.[el.id],
-    });
-  }
 
   const renderedElements = elements.map((el) => renderElement(el, data, ctx)).filter(Boolean);
 
@@ -100,8 +121,7 @@ export function renderToSvg(
 
   return {
     svg: parts.filter(Boolean).join("\n"),
-    overlays,
-    viewBox: { width, height, offsetX, offsetY },
+    ...metadata,
   };
 }
 

@@ -1,19 +1,90 @@
 // @ts-nocheck
+import { exportScene } from "@excalidraw/utils";
+
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const ZOOM_STEP = 0.15;
 
-function initExcalidraw() {
+async function initExcalidraw() {
   const framePage = document.querySelector(".page[data-frame='excalidraw']");
   if (framePage) {
     initSidebar(framePage);
-    initPanZoom(framePage);
+    await renderExcalidrawPage(framePage);
     return;
   }
 
   const embeddedPages = document.querySelectorAll(".excalidraw-page");
   for (const page of embeddedPages) {
-    initPanZoom(page);
+    await renderExcalidrawPage(page);
+  }
+}
+
+async function toDataUrl(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Image fetch failed: ${url}`);
+  const blob = await response.blob();
+  const dataURL = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+  return { dataURL, mimeType: blob.type || "application/octet-stream" };
+}
+
+async function renderExcalidrawPage(page) {
+  const container = page.querySelector(".excalidraw-container");
+  const dataNode = page.querySelector(".excalidraw-data");
+  if (!container || !dataNode || page.dataset.excalidrawRendering === "true") return;
+  page.dataset.excalidrawRendering = "true";
+
+  try {
+    const scene = JSON.parse(dataNode.textContent || "{}");
+    const files = { ...(scene.files || {}) };
+    await Promise.all(Object.entries(scene.imagePaths || {}).map(async ([id, path]) => {
+      if (files[id]?.dataURL) return;
+      try {
+        const image = await toDataUrl(path);
+        files[id] = {
+          id,
+          mimeType: image.mimeType,
+          dataURL: image.dataURL,
+          created: Date.now(),
+        };
+      } catch (error) {
+        console.warn(`[Excalidraw] Could not load linked image ${path}`, error);
+      }
+    }));
+
+    const preferredTheme = scene.darkMode === "auto"
+      ? (document.documentElement.getAttribute("saved-theme") === "dark" ? "dark" : "light")
+      : scene.darkMode;
+    const appState = scene.appState || {};
+    const svg = await exportScene({
+      type: "svg",
+      data: {
+        elements: (scene.elements || []).filter((element) => !element.isDeleted),
+        appState,
+        files,
+      },
+      config: {
+        theme: preferredTheme,
+        canvasBackgroundColor: appState.exportBackground === false
+          ? false
+          : appState.viewBackgroundColor || "#ffffff",
+        padding: scene.exportPadding ?? 20,
+        embedScene: false,
+      },
+    });
+    if (!page.isConnected) return;
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    container.replaceChildren(svg);
+    if (scene.enableInteraction !== false) initPanZoom(page);
+  } catch (error) {
+    console.error("[Excalidraw] Could not render drawing with Excalidraw exporter", error);
+    page.dataset.excalidrawRendering = "error";
   }
 }
 

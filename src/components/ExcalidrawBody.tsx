@@ -13,7 +13,7 @@ import {
 } from "@quartz-community/utils/path";
 import { toHtml } from "hast-util-to-html";
 import type { ExcalidrawData, ExcalidrawPageOptions } from "../types";
-import { renderToSvg } from "../renderer";
+import { getRenderMetadata } from "../renderer";
 import type { ResolvedEmbed, RenderContext, EmbedOverlay } from "../renderer";
 import style from "./styles/excalidraw.scss";
 // @ts-expect-error inline script import handled by bundler
@@ -163,7 +163,7 @@ export default ((userOpts?: ExcalidrawPageOptions) => {
       resolvedEmbeds: resolvedEmbedMap,
       resolvedImages: resolvedImageMap,
     };
-    const result = renderToSvg(data, options, renderCtx);
+    const result = getRenderMetadata(data, options, renderCtx);
 
     return (
       <article
@@ -182,7 +182,7 @@ export default ((userOpts?: ExcalidrawPageOptions) => {
             ⟲
           </button>
         </div>
-        <div class="excalidraw-container" dangerouslySetInnerHTML={{ __html: result.svg }} />
+        <div class="excalidraw-container" />
         <div
           class="excalidraw-overlays"
           data-viewbox-w={result.viewBox.width}
@@ -192,19 +192,21 @@ export default ((userOpts?: ExcalidrawPageOptions) => {
         >
           {result.overlays.map((o) => renderOverlay(o))}
         </div>
-        {options.enableInteraction !== false && (
-          <script
-            type="application/json"
-            class="excalidraw-data"
-            dangerouslySetInnerHTML={{
-              __html: JSON.stringify({
+        <script
+          type="application/json"
+          class="excalidraw-data"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
                 elements: data.elements,
                 appState: data.appState,
                 files: data.files,
-              }),
-            }}
-          />
-        )}
+                imagePaths: resolvedImageMap,
+                exportPadding: options.exportPadding ?? 20,
+                darkMode: options.darkMode ?? "auto",
+                enableInteraction: options.enableInteraction !== false,
+            }).replace(/</g, "\\u003c"),
+          }}
+        />
       </article>
     );
   };
