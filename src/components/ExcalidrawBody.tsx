@@ -54,7 +54,7 @@ function resolveEmbeds(
 
     if (!page || !page.htmlAst) {
       result[el.id] = {
-        html: `<a href="${href}" style="color:#228be6;text-decoration:none;font-size:13px;">${target}</a>`,
+        html: `<a href="${href}" style="color:var(--darkgray);text-decoration:none;font-size:13px;">${target}</a>`,
         href,
       };
       continue;

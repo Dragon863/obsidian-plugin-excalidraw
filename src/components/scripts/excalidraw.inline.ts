@@ -2,7 +2,7 @@
 import { exportScene } from "@excalidraw/utils";
 
 const MIN_ZOOM = 0.1;
-const MAX_ZOOM = 5;
+const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.15;
 
 async function initExcalidraw() {
@@ -56,32 +56,56 @@ async function renderExcalidrawPage(page) {
       }
     }));
 
+    const appState = scene.appState || {};
+    const data = {
+      elements: (scene.elements || []).filter((element) => !element.isDeleted),
+      appState,
+      files,
+    };
+    const exportTheme = async (theme) => {
+      const svg = await exportScene({
+        type: "svg",
+        data,
+        config: {
+          theme,
+          canvasBackgroundColor: appState.exportBackground === false
+            ? false
+            : appState.viewBackgroundColor || "#ffffff",
+          padding: scene.exportPadding ?? 20,
+          embedScene: false,
+        },
+      });
+      svg.setAttribute("width", "100%");
+      svg.setAttribute("height", "100%");
+      svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+      return svg;
+    };
+    const renderedSvgs = scene.darkMode === "auto"
+      ? {
+          light: await exportTheme("light"),
+          dark: await exportTheme("dark"),
+        }
+      : { [scene.darkMode]: await exportTheme(scene.darkMode) };
     const preferredTheme = scene.darkMode === "auto"
       ? (document.documentElement.getAttribute("saved-theme") === "dark" ? "dark" : "light")
       : scene.darkMode;
-    const appState = scene.appState || {};
-    const svg = await exportScene({
-      type: "svg",
-      data: {
-        elements: (scene.elements || []).filter((element) => !element.isDeleted),
-        appState,
-        files,
-      },
-      config: {
-        theme: preferredTheme,
-        canvasBackgroundColor: appState.exportBackground === false
-          ? false
-          : appState.viewBackgroundColor || "#ffffff",
-        padding: scene.exportPadding ?? 20,
-        embedScene: false,
-      },
-    });
+    let activeSvg = renderedSvgs[preferredTheme];
     if (!page.isConnected) return;
-    svg.setAttribute("width", "100%");
-    svg.setAttribute("height", "100%");
-    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-    container.replaceChildren(svg);
-    if (scene.enableInteraction !== false) initPanZoom(page);
+    container.replaceChildren(activeSvg);
+
+    const setActiveSvg = scene.enableInteraction !== false ? initPanZoom(page) : undefined;
+    if (scene.darkMode === "auto") {
+      const handleThemeChange = (event) => {
+        const nextTheme = event.detail?.theme;
+        const nextSvg = renderedSvgs[nextTheme];
+        if (!nextSvg || nextSvg === activeSvg) return;
+        activeSvg = nextSvg;
+        container.replaceChildren(activeSvg);
+        setActiveSvg?.(activeSvg);
+      };
+      document.addEventListener("themechange", handleThemeChange);
+      window.addCleanup(() => document.removeEventListener("themechange", handleThemeChange));
+    }
   } catch (error) {
     console.error("[Excalidraw] Could not render drawing with Excalidraw exporter", error);
     page.dataset.excalidrawRendering = "error";
@@ -105,7 +129,7 @@ function initPanZoom(page) {
   const container = page.querySelector(".excalidraw-container");
   if (!container) return;
 
-  const svg = container.querySelector("svg");
+  let svg = container.querySelector("svg");
   if (!svg) return;
 
   container.style.backgroundColor = "var(--excalidraw-bg, var(--light))";
@@ -159,6 +183,11 @@ function initPanZoom(page) {
   function applyTransform() {
     svg.style.transform = "translate(" + panX + "px, " + panY + "px) scale(" + zoom + ")";
     positionOverlays();
+  }
+
+  function setActiveSvg(nextSvg) {
+    svg = nextSvg;
+    applyTransform();
   }
 
   function zoomAt(nextZoom, x, y) {
@@ -279,6 +308,8 @@ function initPanZoom(page) {
     container.removeEventListener("touchmove", handleTouchMove);
     container.removeEventListener("touchend", handleTouchEnd);
   });
+
+  return setActiveSvg;
 }
 
 document.addEventListener("nav", initExcalidraw);
